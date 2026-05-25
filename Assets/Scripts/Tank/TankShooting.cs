@@ -1,49 +1,121 @@
-﻿using UnityEngine;
+﻿using Unity.Netcode;
+using UnityEngine;
 using UnityEngine.UI;
 
-public class TankShooting : MonoBehaviour
+namespace TankGame
 {
-    public int m_PlayerNumber = 1;       
-    public Rigidbody m_Shell;            
-    public Transform m_FireTransform;    
-    public Slider m_AimSlider;           
-    public AudioSource m_ShootingAudio;  
-    public AudioClip m_ChargingClip;     
-    public AudioClip m_FireClip;         
-    public float m_MinLaunchForce = 15f; 
-    public float m_MaxLaunchForce = 30f; 
-    public float m_MaxChargeTime = 0.75f;
-
-    /*
-    private string m_FireButton;         
-    private float m_CurrentLaunchForce;  
-    private float m_ChargeSpeed;         
-    private bool m_Fired;                
-
-
-    private void OnEnable()
+    public class TankShooting : NetworkBehaviour
     {
-        m_CurrentLaunchForce = m_MinLaunchForce;
-        m_AimSlider.value = m_MinLaunchForce;
-    }
+        public int numeroJugador = 1;
+        public GameObject prefabBala;
+        public Transform puntoDisparo;
+        public Slider sliderApuntado;
+        public AudioSource audioDisparo;
+        public AudioClip sonidoCarga;
+        public AudioClip sonidoDisparo;
+        public float fuerzaMinima = 15f;
+        public float fuerzaMaxima = 30f;
+        public float tiempoCargaMax = 0.75f;
 
+        private string botonDisparo;
+        private float fuerzaActual;
+        private float velocidadCarga;
+        private bool disparado;
 
-    private void Start()
-    {
-        m_FireButton = "Fire" + m_PlayerNumber;
+        private void OnEnable()
+        {
+            fuerzaActual = fuerzaMinima;
+            if (sliderApuntado != null) sliderApuntado.value = fuerzaMinima;
+        }
 
-        m_ChargeSpeed = (m_MaxLaunchForce - m_MinLaunchForce) / m_MaxChargeTime;
-    }
-    */
+        private void Start()
+        {
+            botonDisparo = "Fire" + numeroJugador;
+            velocidadCarga = (fuerzaMaxima - fuerzaMinima) / tiempoCargaMax;
+        }
 
-    private void Update()
-    {
-        // Track the current state of the fire button and make decisions based on the current launch force.
-    }
+        private void Update()
+        {
+            if (!IsOwner) return;
 
+            if (sliderApuntado != null) sliderApuntado.value = fuerzaMinima;
 
-    private void Fire()
-    {
-        // Instantiate and launch the shell.
+            if (fuerzaActual >= fuerzaMaxima && !disparado)
+            {
+                fuerzaActual = fuerzaMaxima;
+                Disparar();
+            }
+            else if (Input.GetButtonDown(botonDisparo))
+            {
+                disparado = false;
+                fuerzaActual = fuerzaMinima;
+
+                if (audioDisparo != null)
+                {
+                    audioDisparo.clip = sonidoCarga;
+                    audioDisparo.Play();
+                }
+            }
+            else if (Input.GetButton(botonDisparo) && !disparado)
+            {
+                fuerzaActual += velocidadCarga * Time.deltaTime;
+                if (sliderApuntado != null) sliderApuntado.value = fuerzaActual;
+            }
+            else if (Input.GetButtonUp(botonDisparo) && !disparado)
+            {
+                Disparar();
+            }
+        }
+
+        private void Disparar()
+        {
+            disparado = true;
+            DispararServerRpc(fuerzaActual);
+            fuerzaActual = fuerzaMinima;
+        }
+
+        [ServerRpc]
+        private void DispararServerRpc(float fuerza)
+        {
+            if (prefabBala == null)
+            {
+                
+                return;
+            }
+            if (puntoDisparo == null)
+            {
+                
+                return;
+            }
+
+            GameObject instanciaBala = Instantiate(prefabBala, puntoDisparo.position, puntoDisparo.rotation);
+
+            Rigidbody rbBala = instanciaBala.GetComponent<Rigidbody>();
+            if (rbBala != null)
+            {
+                rbBala.isKinematic = false;
+                rbBala.velocity = fuerza * puntoDisparo.forward;
+            }
+            
+
+            NetworkObject netObj = instanciaBala.GetComponent<NetworkObject>();
+            if (netObj != null)
+            {
+                netObj.Spawn();
+            }
+            
+
+            ReproducirAudioDisparoClientRpc();
+        }
+
+        [ClientRpc]
+        private void ReproducirAudioDisparoClientRpc()
+        {
+            if (audioDisparo != null)
+            {
+                audioDisparo.clip = sonidoDisparo;
+                audioDisparo.Play();
+            }
+        }
     }
 }

@@ -1,22 +1,22 @@
-using UnityEngine;
+﻿using UnityEngine;
 
-public class UIDirectionControl : MonoBehaviour
+namespace TankGame
 {
-    public bool m_UseRelativeRotation = true;  
-
-
-    private Quaternion m_RelativeRotation;     
-
-
-    private void Start()
+    public class UIDirectionControl : MonoBehaviour
     {
-        m_RelativeRotation = transform.parent.localRotation;
-    }
+        
 
+        private Quaternion rotacionInicial;
 
-    private void Update()
-    {
-        if (m_UseRelativeRotation)
-            transform.rotation = m_RelativeRotation;
+        private void Start()
+        {
+            rotacionInicial = transform.parent.localRotation;
+        }
+
+        private void Update()
+        {
+            
+                transform.rotation = rotacionInicial;
+        }
     }
 }

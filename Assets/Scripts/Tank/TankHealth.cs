@@ -1,54 +1,200 @@
-﻿using UnityEngine;
+﻿using Unity.Netcode;
+using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
-public class TankHealth : MonoBehaviour
+namespace TankGame
 {
-    public float m_StartingHealth = 100f;          
-    public Slider m_Slider;                        
-    public Image m_FillImage;                      
-    public Color m_FullHealthColor = Color.green;  
-    public Color m_ZeroHealthColor = Color.red;    
-    public GameObject m_ExplosionPrefab;
-    
-    /*
-    private AudioSource m_ExplosionAudio;          
-    private ParticleSystem m_ExplosionParticles;   
-    private float m_CurrentHealth;  
-    private bool m_Dead;            
-
-
-    private void Awake()
+    public class TankHealth : NetworkBehaviour
     {
-        m_ExplosionParticles = Instantiate(m_ExplosionPrefab).GetComponent<ParticleSystem>();
-        m_ExplosionAudio = m_ExplosionParticles.GetComponent<AudioSource>();
+        public float m_StartingHealth = 100f;
+        public Slider barraDeVida;
+        public Image imagenRelleno;
+        public Color colorVidaLlena = Color.green;
+        public Color colorVidaVacia = Color.red;
+        public GameObject prefabExplosion;
 
-        m_ExplosionParticles.gameObject.SetActive(false);
-    }
+        [Header("Display de Vidas")]
+        public TextMeshProUGUI textoVidas;
 
+        public NetworkVariable<float> m_CurrentHealth = new NetworkVariable<float>(100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+        public NetworkVariable<int> m_CurrentLives = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
-    private void OnEnable()
-    {
-        m_CurrentHealth = m_StartingHealth;
-        m_Dead = false;
+        private bool muerto;
+        private Rigidbody rb;
 
-        SetHealthUI();
-    }
-    */
+        private void Awake()
+        {
+            rb = GetComponent<Rigidbody>();
+        }
 
-    public void TakeDamage(float amount)
-    {
-        // Adjust the tank's current health, update the UI based on the new health and check whether or not the tank is dead.
-    }
+        public override void OnNetworkSpawn()
+        {
+            m_CurrentHealth.OnValueChanged += AlCambiarVida;
+            m_CurrentLives.OnValueChanged += AlCambiarVidas;
 
+            if (IsServer)
+            {
+                m_CurrentHealth.Value = m_StartingHealth;
+                m_CurrentLives.Value = 0;
+                muerto = false;
+            }
 
-    private void SetHealthUI()
-    {
-        // Adjust the value and colour of the slider.
-    }
+            ActualizarBarraDeVida(m_CurrentHealth.Value);
+            ActualizarTextoVidas(m_CurrentLives.Value);
+        }
 
+        public override void OnNetworkDespawn()
+        {
+            m_CurrentHealth.OnValueChanged -= AlCambiarVida;
+            m_CurrentLives.OnValueChanged -= AlCambiarVidas;
+        }
 
-    private void OnDeath()
-    {
-        // Play the effects for the death of the tank and deactivate it.
+        private void AlCambiarVida(float vidaAnterior, float vidaNueva)
+        {
+            ActualizarBarraDeVida(vidaNueva);
+        }
+
+        private void AlCambiarVidas(int anterior, int nuevo)
+        {
+            ActualizarTextoVidas(nuevo);
+        }
+
+        private void ActualizarTextoVidas(int vidas)
+        {
+            if (textoVidas != null)
+                textoVidas.text = "Bajas: " + vidas.ToString();
+        }
+
+        public void TakeDamage(float cantidad)
+        {
+            if (!IsServer || muerto) return;
+
+            m_CurrentHealth.Value -= cantidad;
+
+            if (m_CurrentHealth.Value <= 0f)
+            {
+                AlMorir();
+            }
+        }
+
+        private void ActualizarBarraDeVida(float vida)
+        {
+            if (barraDeVida != null) barraDeVida.value = vida;
+            if (imagenRelleno != null) imagenRelleno.color = Color.Lerp(colorVidaVacia, colorVidaLlena, vida / m_StartingHealth);
+        }
+
+        private void AlMorir()
+        {
+            muerto = true;
+            ReproducirExplosionClientRpc(transform.position);
+            m_CurrentLives.Value++;
+            Respawn();
+        }
+
+        [ClientRpc]
+        private void ReproducirExplosionClientRpc(Vector3 posicion)
+        {
+            if (prefabExplosion != null)
+            {
+                GameObject instanciaExplosion = Instantiate(prefabExplosion, posicion, Quaternion.identity);
+                ParticleSystem particulas = instanciaExplosion.GetComponent<ParticleSystem>();
+                AudioSource audio = instanciaExplosion.GetComponent<AudioSource>();
+
+                if (particulas != null)
+                {
+                    particulas.Play();
+                    Destroy(instanciaExplosion, particulas.main.duration);
+                }
+
+                if (audio != null) audio.Play();
+            }
+        }
+
+        public void Respawn()
+        {
+            if (!IsServer) return;
+
+            m_CurrentHealth.Value = m_StartingHealth;
+            muerto = false;
+
+            Vector3 posicionDestino = Vector3.zero;
+            Quaternion rotacionDestino = Quaternion.identity;
+
+            string nombreSpawn = (OwnerClientId == 0) ? "SpawnPoint1" : "SpawnPoint2";
+            GameObject objSpawn = GameObject.Find(nombreSpawn);
+
+            if (objSpawn != null)
+            {
+                posicionDestino = objSpawn.transform.position;
+                rotacionDestino = objSpawn.transform.rotation;
+            }
+            else
+            {
+                GameObject spawner = GameObject.Find("PlayerSpawner");
+                if (spawner != null)
+                {
+                    Transform spawnAlternativo = spawner.transform.Find(nombreSpawn);
+                    if (spawnAlternativo != null)
+                    {
+                        posicionDestino = spawnAlternativo.position;
+                        rotacionDestino = spawnAlternativo.rotation;
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"[TankHealth] No se encuentra '{nombreSpawn}' en la escena.");
+                }
+            }
+
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.isKinematic = true;
+            }
+
+            transform.position = posicionDestino;
+            transform.rotation = rotacionDestino;
+
+            if (rb != null) rb.isKinematic = false;
+
+            ReiniciarClientRpc(posicionDestino, rotacionDestino);
+        }
+
+        [ClientRpc]
+        private void ReiniciarClientRpc(Vector3 posicion, Quaternion rotacion)
+        {
+            if (rb != null)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.isKinematic = true;
+            }
+
+            transform.position = posicion;
+            transform.rotation = rotacion;
+
+            ActivarTanque(true);
+            ActualizarBarraDeVida(m_StartingHealth);
+
+            if (rb != null) rb.isKinematic = false;
+        }
+
+        private void ActivarTanque(bool activo)
+        {
+            foreach (Renderer r in GetComponentsInChildren<Renderer>(true)) r.enabled = activo;
+            foreach (Projector p in GetComponentsInChildren<Projector>(true)) p.enabled = activo;
+            foreach (Collider c in GetComponentsInChildren<Collider>(true)) c.enabled = activo;
+
+            TankMovement movimiento = GetComponent<TankMovement>();
+            if (movimiento != null) movimiento.enabled = activo;
+
+            TankShooting disparo = GetComponent<TankShooting>();
+            if (disparo != null) disparo.enabled = activo;
+
+            Canvas canvas = GetComponentInChildren<Canvas>(true);
+            if (canvas != null) canvas.gameObject.SetActive(activo);
+        }
     }
 }

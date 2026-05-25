@@ -1,78 +1,65 @@
-﻿using UnityEngine;
+﻿using Unity.Netcode;
+using UnityEngine;
 
-public class TankMovement : MonoBehaviour
+namespace TankGame
 {
-    public int m_PlayerNumber = 1;         
-    public float m_Speed = 12f;            
-    public float m_TurnSpeed = 180f;       
-    public AudioSource m_MovementAudio;    
-    public AudioClip m_EngineIdling;       
-    public AudioClip m_EngineDriving;      
-    public float m_PitchRange = 0.2f;
-
-    /*
-    private string m_MovementAxisName;     
-    private string m_TurnAxisName;         
-    private Rigidbody m_Rigidbody;         
-    private float m_MovementInputValue;    
-    private float m_TurnInputValue;        
-    private float m_OriginalPitch;         
-
-
-    private void Awake()
+    public class TankMovement : NetworkBehaviour
     {
-        m_Rigidbody = GetComponent<Rigidbody>();
-    }
+        public float velocidad = 12f;
+        public float velocidadGiro = 180f;
+        public AudioSource audioMovimiento;
+        public AudioClip sonidoRalenti;
+        public AudioClip sonidoMoviendo;
+        public float rangoPitch = 0.2f;
 
-    private void OnEnable ()
-    {
-        m_Rigidbody.isKinematic = false;
-        m_MovementInputValue = 0f;
-        m_TurnInputValue = 0f;
-    }
+        private Rigidbody rb;
+        private float inputMovimiento;
+        private float inputGiro;
+        private float pitchOriginal;
+        private NetworkVariable<Color> colorRed = new NetworkVariable<Color>(Color.white, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
+        private void Awake()
+        {
+            rb = GetComponent<Rigidbody>();
+        }
 
-    private void OnDisable ()
-    {
-        m_Rigidbody.isKinematic = true;
-    }
+        public override void OnNetworkSpawn()
+        {
+            pitchOriginal = audioMovimiento.pitch;
 
+        }
 
-    private void Start()
-    {
-        m_MovementAxisName = "Vertical" + m_PlayerNumber;
-        m_TurnAxisName = "Horizontal" + m_PlayerNumber;
+      
 
-        m_OriginalPitch = m_MovementAudio.pitch;
-    }
-    */
+        private void Update()
+        {
+            
 
-    private void Update()
-    {
-        // Store the player's input and make sure the audio for the engine is playing.
-    }
+            inputMovimiento = Input.GetAxis("Vertical");
+            inputGiro = Input.GetAxis("Horizontal");
+            AudioMotor();
+        }
 
+        private void FixedUpdate()
+        {
+            
+            Mover();
+            Girar();
+        }
 
-    private void EngineAudio()
-    {
-        // Play the correct audio clip based on whether or not the tank is moving and what audio is currently playing.
-    }
+        private void Mover()
+        {
+            Vector3 movimiento = transform.forward * inputMovimiento * velocidad * Time.deltaTime;
+            rb.MovePosition(rb.position + movimiento);
+        }
 
+        private void Girar()
+        {
+            float giro = inputGiro * velocidadGiro * Time.deltaTime;
+            Quaternion rotacionGiro = Quaternion.Euler(0f, giro, 0f);
+            rb.MoveRotation(rb.rotation * rotacionGiro);
+        }
 
-    private void FixedUpdate()
-    {
-        // Move and turn the tank.
-    }
-
-
-    private void Move()
-    {
-        // Adjust the position of the tank based on the player's input.
-    }
-
-
-    private void Turn()
-    {
-        // Adjust the rotation of the tank based on the player's input.
+        private void AudioMotor() { /* Lógica de audio */ }
     }
 }
