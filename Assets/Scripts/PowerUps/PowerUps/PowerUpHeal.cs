@@ -19,7 +19,7 @@ namespace TankGame
                 float vidaNueva = vida.m_CurrentHealth.Value + cantidadCura;
                 vida.m_CurrentHealth.Value = Mathf.Min(vidaNueva, vida.m_StartingHealth);
 
-                Debug.Log("[PowerUp] Tanque curado.");
+                
                 return true;
             }
             return false;
